@@ -1,6 +1,7 @@
 package com.bluetoothapp;
 
 import java.lang.reflect.Method;
+import java.util.Arrays;
 import java.util.Set;
 
 import android.app.Activity;
@@ -10,7 +11,10 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.os.Build;
 import android.os.Bundle;
+import android.os.Parcelable;
+import android.util.Base64;
 import android.util.Log;
 import android.view.View;
 import android.widget.AdapterView;
@@ -39,6 +43,9 @@ public class DeviceListActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.device_list);
+
+        IntentFilter iFilter = new IntentFilter(BluetoothDevice.ACTION_PAIRING_REQUEST);
+        registerReceiver(mPairingRequestReceiver, iFilter);
 
         Button scanButton = (Button) findViewById(R.id.button_scan);
         scanButton.setOnClickListener(v -> {
@@ -93,6 +100,7 @@ public class DeviceListActivity extends Activity {
 
         // Unregister broadcast listeners
         this.unregisterReceiver(receiver);
+        this.unregisterReceiver(mPairingRequestReceiver);
     }
 
     private void doDiscovery() {
@@ -143,8 +151,12 @@ public class DeviceListActivity extends Activity {
 
             BluetoothDevice device = bluetoothAdapter.getRemoteDevice(address);
             Log.d("pairDevice()", "Start Pairing...");
-            Method m = device.getClass().getMethod("createBond", (Class[]) null);
-            m.invoke(device, (Object[]) null);
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
+                device.createBond();
+            } else {
+                device.getClass().getMethod("createBond", (Class[]) null).invoke(device, (Object[]) null);
+            }
             Log.d("pairDevice()", "Pairing finished.");
         } catch (Exception e) {
             Log.e("pairDevice()", e.getMessage());
@@ -164,7 +176,12 @@ public class DeviceListActivity extends Activity {
                 BluetoothDevice device = intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE);
                 // If it's already paired, skip it, because it's been listed already
                 if (device.getBondState() != BluetoothDevice.BOND_BONDED) {
-                    newDevicesArrayAdapter.add(device.getName() + "\n" + device.getAddress());
+                    newDevicesArrayAdapter.add(device.getName() + "\n" + device.getAddress() + "\n" + Arrays.toString(device.getUuids()));
+                    short rssi = intent.getExtras().getShort(BluetoothDevice.EXTRA_RSSI);
+                    byte[] raw = intent.getExtras().getByteArray("android.bluetooth.device.extra.DISC_RAW_DATA");
+                    Log.e(TAG, ""+rssi);
+                    Log.e(TAG, ""+ Base64.encodeToString(raw, Base64.DEFAULT));
+                    Log.e(TAG, intent.getExtras().toString());
                 }
                 // When discovery is finished, change the Activity title
             } else if (BluetoothAdapter.ACTION_DISCOVERY_FINISHED.equals(action)) {
@@ -177,4 +194,26 @@ public class DeviceListActivity extends Activity {
         }
     };
 
+    private final BroadcastReceiver mPairingRequestReceiver = new BroadcastReceiver() {
+        public void onReceive(Context context, Intent intent) {
+            String action = intent.getAction();
+            if (action.equals(BluetoothDevice.ACTION_PAIRING_REQUEST)) {
+                try {
+                    BluetoothDevice device = intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE);
+                    int pin = intent.getIntExtra("android.bluetooth.device.extra.PAIRING_KEY", 1234);
+                    //the pin in case you need to accept for an specific pin
+                    Log.e(TAG, "Start Auto Pairing. PIN = " + intent.getIntExtra("android.bluetooth.device.extra.PAIRING_KEY", 1234));
+                    byte[] pinBytes;
+                    pinBytes = ("" + pin).getBytes("UTF-8");
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
+                        device.setPin(pinBytes);
+                        device.setPairingConfirmation(true);
+                    }
+                } catch (Exception e) {
+                    Log.e(TAG, "Error occurs when trying to auto pair");
+                    e.printStackTrace();
+                }
+            }
+        }
+    };
 }

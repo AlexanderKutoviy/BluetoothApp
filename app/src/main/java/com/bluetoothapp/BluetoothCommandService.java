@@ -19,8 +19,9 @@ public class BluetoothCommandService {
 
     private static final String TAG = BluetoothCommandService.class.getSimpleName();
     //    private static final UUID MY_UUID = UUID.fromString("04c6093b-0000-1000-8000-00805f9b34fb");
-    private static final UUID MY_UUID = UUID.randomUUID();
-
+//        private static final UUID MY_UUID = UUID.fromString("0000110100001000800000805f9b34fb");
+        private static final UUID MY_UUID = UUID.fromString("446118f0-8b1e-11e2-9e96-0800200c9a66");
+//    private static final UUID MY_UUID = UUID.randomUUID();
     private final BluetoothAdapter bluetoothAdapter;
     private final Handler mHandler;
     private ConnectThread mConnectThread;
@@ -248,22 +249,17 @@ public class BluetoothCommandService {
      * succeeds or fails.
      */
     private class ConnectThread extends Thread {
-        private final BluetoothSocket socket;
+        private BluetoothSocket socket;
         private BluetoothSocket fallBackSocket;
         private final BluetoothDevice device;
 
         public ConnectThread(BluetoothDevice device) {
             this.device = device;
-            BluetoothSocket tmp = null;
-
-            // Get a BluetoothSocket for a connection with the
-            // given BluetoothDevice
             try {
-                tmp = device.createRfcommSocketToServiceRecord(MY_UUID);
+                socket = device.createRfcommSocketToServiceRecord(MY_UUID);
             } catch (IOException e) {
                 Log.e(TAG, "create() failed", e);
             }
-            socket = tmp;
         }
 
         public void run() {
@@ -285,6 +281,7 @@ public class BluetoothCommandService {
                 Method m;
                 try {
                     m = clazz.getMethod("createRfcommSocket", paramTypes);
+                    socket.getRemoteDevice().createRfcommSocketToServiceRecord(MY_UUID);
                     Object[] params = new Object[]{Integer.valueOf(1)};
                     fallBackSocket = (BluetoothSocket) m.invoke(socket.getRemoteDevice(), params);
                     Log.e(TAG, "fallBackSocket try to connect");
@@ -336,23 +333,18 @@ public class BluetoothCommandService {
         public ConnectedThread(BluetoothSocket socket) {
             Log.e(TAG, "create ConnectedThread");
             mmSocket = socket;
-            InputStream tmpIn = null;
-            OutputStream tmpOut = null;
-
             // Get the BluetoothSocket input and output streams
             try {
-                tmpIn = socket.getInputStream();
-                tmpOut = socket.getOutputStream();
+                mmInStream = socket.getInputStream();
+                mmOutStream = socket.getOutputStream();
             } catch (IOException e) {
                 Log.e(TAG, "temp sockets not created", e);
+                throw new RuntimeException(e);
             }
-
-            mmInStream = tmpIn;
-            mmOutStream = tmpOut;
         }
 
         public void run() {
-            Log.i(TAG, "BEGIN mConnectedThread");
+            Log.e(TAG, "BEGIN mConnectedThread");
             byte[] buffer = new byte[1024];
 
             // Keep listening to the InputStream while connected

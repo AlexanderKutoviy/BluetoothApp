@@ -95,7 +95,7 @@ public class RemoteBluetooth extends AppCompatActivity {
                 startActivityForResult(serverIntent, REQUEST_CONNECT_DEVICE);
                 return true;
             case R.id.discoverable:
-                ensureDiscoverable();
+//                ensureDiscoverable();
                 return true;
         }
         return false;
@@ -116,14 +116,6 @@ public class RemoteBluetooth extends AppCompatActivity {
 
     private void setupCommand() {
         bluetoothCommandService = new BluetoothCommandService(this, handler);
-    }
-
-    private void ensureDiscoverable() {
-        if (bluetoothAdapter.getScanMode() != BluetoothAdapter.SCAN_MODE_CONNECTABLE_DISCOVERABLE) {
-            Intent discoverableIntent = new Intent(BluetoothAdapter.ACTION_REQUEST_DISCOVERABLE);
-            discoverableIntent.putExtra(BluetoothAdapter.EXTRA_DISCOVERABLE_DURATION, 1000);
-            startActivity(discoverableIntent);
-        }
     }
 
     // The Handler that gets information back from the BluetoothChatService
