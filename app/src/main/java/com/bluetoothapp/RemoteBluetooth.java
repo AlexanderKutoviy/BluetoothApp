@@ -7,15 +7,14 @@ import android.content.Intent;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Message;
+import android.support.v7.app.AppCompatActivity;
 import android.view.KeyEvent;
 import android.view.Menu;
 import android.view.MenuInflater;
 import android.view.MenuItem;
-import android.view.Window;
-import android.widget.TextView;
 import android.widget.Toast;
 
-public class RemoteBluetooth extends Activity {
+public class RemoteBluetooth extends AppCompatActivity {
     // Intent request codes
     private static final int REQUEST_CONNECT_DEVICE = 1;
     private static final int REQUEST_ENABLE_BT = 2;
@@ -32,15 +31,10 @@ public class RemoteBluetooth extends Activity {
     public static final String TOAST = "toast";
 
     // Name of the connected device
-    private String mConnectedDeviceName = null;
-    // Local Bluetooth adapter
-    private BluetoothAdapter mBluetoothAdapter = null;
-    // Member object for Bluetooth Command Service
-    private BluetoothCommandService mCommandService = null;
+    private String connectedDeviceName = null;
+    private BluetoothAdapter bluetoothAdapter = null;
+    private BluetoothCommandService bluetoothCommandService = null;
 
-    /**
-     * Called when the activity is first created.
-     */
     @Override
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -48,10 +42,10 @@ public class RemoteBluetooth extends Activity {
         setContentView(R.layout.main);
 
         // Get local Bluetooth adapter
-        mBluetoothAdapter = BluetoothAdapter.getDefaultAdapter();
+        bluetoothAdapter = BluetoothAdapter.getDefaultAdapter();
 
         // If the adapter is null, then Bluetooth is not supported
-        if (mBluetoothAdapter == null) {
+        if (bluetoothAdapter == null) {
             Toast.makeText(this, "Bluetooth is not available", Toast.LENGTH_LONG).show();
             finish();
             return;
@@ -61,16 +55,10 @@ public class RemoteBluetooth extends Activity {
     @Override
     protected void onStart() {
         super.onStart();
-
-        // If BT is not on, request that it be enabled.
-        // setupCommand() will then be called during onActivityResult
-        if (!mBluetoothAdapter.isEnabled()) {
-            Intent enableIntent = new Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE);
-            startActivityForResult(enableIntent, REQUEST_ENABLE_BT);
-        }
-        // otherwise set up the command service
-        else {
-            if (mCommandService == null)
+        if (!bluetoothAdapter.isEnabled()) {
+            bluetoothAdapter.enable();
+        } else {
+            if (bluetoothCommandService == null)
                 setupCommand();
         }
     }
@@ -78,41 +66,67 @@ public class RemoteBluetooth extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
-
-        // Performing this check in onResume() covers the case in which BT was
-        // not enabled during onStart(), so we were paused to enable it...
-        // onResume() will be called when ACTION_REQUEST_ENABLE activity returns.
-        if (mCommandService != null) {
-            if (mCommandService.getState() == BluetoothCommandService.STATE_NONE) {
-                mCommandService.start();
+        if (bluetoothCommandService != null) {
+            if (bluetoothCommandService.getState() == BluetoothCommandService.STATE_NONE) {
+                bluetoothCommandService.start();
             }
         }
-    }
-
-    private void setupCommand() {
-        // Initialize the BluetoothChatService to perform bluetooth connections
-        mCommandService = new BluetoothCommandService(this, mHandler);
     }
 
     @Override
     protected void onDestroy() {
         super.onDestroy();
+        if (bluetoothCommandService != null)
+            bluetoothCommandService.stop();
+    }
 
-        if (mCommandService != null)
-            mCommandService.stop();
+    @Override
+    public boolean onCreateOptionsMenu(Menu menu) {
+        MenuInflater inflater = getMenuInflater();
+        inflater.inflate(R.menu.option_menu, menu);
+        return super.onCreateOptionsMenu(menu);
+    }
+
+    @Override
+    public boolean onOptionsItemSelected(MenuItem item) {
+        switch (item.getItemId()) {
+            case R.id.scan:
+                Intent serverIntent = new Intent(this, DeviceListActivity.class);
+                startActivityForResult(serverIntent, REQUEST_CONNECT_DEVICE);
+                return true;
+            case R.id.discoverable:
+                ensureDiscoverable();
+                return true;
+        }
+        return false;
+    }
+
+    @Override
+    public boolean onKeyDown(int keyCode, KeyEvent event) {
+        if (keyCode == KeyEvent.KEYCODE_VOLUME_UP) {
+            bluetoothCommandService.write(BluetoothCommandService.VOL_UP);
+            return true;
+        } else if (keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) {
+            bluetoothCommandService.write(BluetoothCommandService.VOL_DOWN);
+            return true;
+        }
+
+        return super.onKeyDown(keyCode, event);
+    }
+
+    private void setupCommand() {
+        bluetoothCommandService = new BluetoothCommandService(this, handler);
     }
 
     private void ensureDiscoverable() {
-        if (mBluetoothAdapter.getScanMode() !=
-                BluetoothAdapter.SCAN_MODE_CONNECTABLE_DISCOVERABLE) {
+        if (bluetoothAdapter.getScanMode() != BluetoothAdapter.SCAN_MODE_CONNECTABLE_DISCOVERABLE) {
             Intent discoverableIntent = new Intent(BluetoothAdapter.ACTION_REQUEST_DISCOVERABLE);
-            discoverableIntent.putExtra(BluetoothAdapter.EXTRA_DISCOVERABLE_DURATION, 300);
             startActivity(discoverableIntent);
         }
     }
 
     // The Handler that gets information back from the BluetoothChatService
-    private final Handler mHandler = new Handler() {
+    private final Handler handler = new Handler() {
         @Override
         public void handleMessage(Message msg) {
             switch (msg.what) {
@@ -129,9 +143,9 @@ public class RemoteBluetooth extends Activity {
                     break;
                 case MESSAGE_DEVICE_NAME:
                     // save the connected device's name
-                    mConnectedDeviceName = msg.getData().getString(DEVICE_NAME);
+                    connectedDeviceName = msg.getData().getString(DEVICE_NAME);
                     Toast.makeText(getApplicationContext(), "Connected to "
-                            + mConnectedDeviceName, Toast.LENGTH_SHORT).show();
+                            + connectedDeviceName, Toast.LENGTH_SHORT).show();
                     break;
                 case MESSAGE_TOAST:
                     Toast.makeText(getApplicationContext(), msg.getData().getString(TOAST),
@@ -150,9 +164,9 @@ public class RemoteBluetooth extends Activity {
                     String address = data.getExtras()
                             .getString(DeviceListActivity.EXTRA_DEVICE_ADDRESS);
                     // Get the BLuetoothDevice object
-                    BluetoothDevice device = mBluetoothAdapter.getRemoteDevice(address);
+                    BluetoothDevice device = bluetoothAdapter.getRemoteDevice(address);
                     // Attempt to connect to the device
-                    mCommandService.connect(device);
+                    bluetoothCommandService.connect(device);
                 }
                 break;
             case REQUEST_ENABLE_BT:
@@ -166,41 +180,5 @@ public class RemoteBluetooth extends Activity {
                     finish();
                 }
         }
-    }
-
-    @Override
-    public boolean onCreateOptionsMenu(Menu menu) {
-        MenuInflater inflater = getMenuInflater();
-        inflater.inflate(R.menu.option_menu, menu);
-        return true;
-    }
-
-    @Override
-    public boolean onOptionsItemSelected(MenuItem item) {
-        switch (item.getItemId()) {
-            case R.id.scan:
-                // Launch the DeviceListActivity to see devices and do scan
-                Intent serverIntent = new Intent(this, DeviceListActivity.class);
-                startActivityForResult(serverIntent, REQUEST_CONNECT_DEVICE);
-                return true;
-            case R.id.discoverable:
-                // Ensure this device is discoverable by others
-                ensureDiscoverable();
-                return true;
-        }
-        return false;
-    }
-
-    @Override
-    public boolean onKeyDown(int keyCode, KeyEvent event) {
-        if (keyCode == KeyEvent.KEYCODE_VOLUME_UP) {
-            mCommandService.write(BluetoothCommandService.VOL_UP);
-            return true;
-        } else if (keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) {
-            mCommandService.write(BluetoothCommandService.VOL_DOWN);
-            return true;
-        }
-
-        return super.onKeyDown(keyCode, event);
     }
 }
